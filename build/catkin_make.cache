@@ -1,0 +1,2 @@
+project3/turtlebot_proj3_pkg
+-DCATKIN_DEVEL_PREFIX=/home/caitlin/project3/devel -DCMAKE_INSTALL_PREFIX=/home/caitlin/project3/install -G Unix Makefiles
