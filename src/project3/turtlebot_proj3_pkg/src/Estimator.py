@@ -297,6 +297,12 @@ class KalmanFilter(Estimator):
         self.phid = np.pi / 4
         # TODO: Your implementation goes here!
         # You may define the A, C, Q, R, and P matrices below.
+        self.A = np.eye(6)
+        self.C = np.array([[1, 0, 0, 0],
+                          [0, 1, 0, 0]])
+        self.Q = np.eye(6)
+        self.R = np.eye(3)
+        self.P = np.eye(6)
 
     # noinspection DuplicatedCode
     # noinspection PyPep8Naming
@@ -304,7 +310,30 @@ class KalmanFilter(Estimator):
         if len(self.x_hat) > 0 and self.x_hat[-1][0] < self.x[-1][0]:
             # TODO: Your implementation goes here!
             # You may use self.u, self.y, and self.x[0] for estimation
-            raise NotImplementedError
+            t = 0
+            self.x_hat[0][:] = self.x[0][:]
+
+            P = self.P
+
+            while t <= (len(self.u)-1):
+                x_hat_given = self.A * self.x_hat[t][:] + KalmanFilter.unicycleModel(self.phid) * self.u[t][:]
+                P_next_given = self.A * P * self.A.T + self.Q
+                K_next = P_next_given * self.C.T * np.inv(self.C * P_next_given * self.C.T + self.R)
+                self.x_hat[t+1][:] = x_hat_given + K_next * (self.y[t][:] - self.C * x_hat_given)
+                P_next = (np.eye(3) - K_next * self.C) * P_next_given
+
+                t = t+1
+                P = P_next
+
+            return self.x_hat
+        
+    def unicycleModel(self, phi):
+        function = np.array([[(-self.r/(2*self.d)), (self.r/(2*self.d))],
+                    [(self.r/2)*np.cos(phi), (self.r/2)*np.cos(phi)],
+                    [(self.r/2)*np.sin(phi), (self.r/2)*np.sin(phi)],
+                    [1, 0],
+                    [0, 1]])
+        return function * self.dt
 
 
 # noinspection PyPep8Naming
