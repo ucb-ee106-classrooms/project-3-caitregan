@@ -208,26 +208,40 @@ class DeadReckoning(Estimator):
         self.canvas_title = 'Dead Reckoning'
 
     def update(self, _):
-        if len(self.x_hat) > 0:
-            # TODO: Your implementation goes here!
-            # You may ONLY use self.u and self.x[0] for estimation
-            t = 0
-            self.x_hat[0][:] = self.x[0][:]
-            while t < len(self.x):
-                self.x_hat[t+1][:] = self.x_hat[t][:] + DeadReckoning.quadrotorModel(self, self.x_hat[t][1]) * self.u[1:2] * self.dt
-                self.x[t][:] = self.x_hat[t+1][:]
-                t = t+1
+        x_prev = self.x_hat[-1]
+        curr_u = self.u[-1]
 
-        return self.x_hat
+        x_func = self.quadModel(x_prev, curr_u)
+        next_estimate = x_prev + x_func * self.dt
+
+        self.x_hat.append(next_estimate)
+
+    def quadModel(self, x, u):
+
+        phi = x[2]
+        x_ddot = -(u[0] * np.sin(phi)) / self.m
+        z_ddot = (u[0] * np.cos(phi)) / self.m - self.gr
+        phi_ddot = u[1] / self.J
+
+        return np.array([
+            x[0],
+            x[1],
+            x[2],
+            x_ddot,
+            z_ddot,
+            phi_ddot
+        ]) 
+
+        
     
-    def quadrotorModel(self, phi):
-        function = np.array([[0, 0],
-                      [0, 0],
-                      [0, 0],
-                      [-np.sin(phi)/self.m, 0],
-                      [np.cos(phi)/self.m, 0],
-                      [0, (1/self.J)]])
-        return function
+    # def quadrotorModel(self, phi):
+    #     function = np.array([[0, 0],
+    #                   [0, 0],
+    #                   [0, 0],
+    #                   [-np.sin(phi)/self.m, 0],
+    #                   [np.cos(phi)/self.m, 0],
+    #                   [0, (1/self.J)]])
+
 
 # noinspection PyPep8Naming
 class ExtendedKalmanFilter(Estimator):
