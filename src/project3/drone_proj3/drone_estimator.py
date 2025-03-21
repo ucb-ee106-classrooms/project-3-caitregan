@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import sympy as sy
+from dynamics import QuadDyn
 plt.rcParams['font.family'] = ['Arial']
 plt.rcParams['font.size'] = 14
 
@@ -208,8 +209,11 @@ class DeadReckoning(Estimator):
         self.canvas_title = 'Dead Reckoning'
 
     def update(self, _):
-        x_prev = self.x_hat[-1]
-        curr_u = self.u[-1]
+        t = len(self.x_hat) -1 
+        
+
+        x_prev = self.x_hat[t]
+        curr_u = self.u[t]
 
         x_func = self.quadModel(x_prev, curr_u)
         next_estimate = x_prev + x_func * self.dt
@@ -223,24 +227,16 @@ class DeadReckoning(Estimator):
         z_ddot = (u[0] * np.cos(phi)) / self.m - self.gr
         phi_ddot = u[1] / self.J
 
+        print(x)
+
         return np.array([
-            x[0],
-            x[1],
-            x[2],
+            x[3],
+            x[4],
+            x[5],
             x_ddot,
             z_ddot,
             phi_ddot
         ]) 
-
-        
-    
-    # def quadrotorModel(self, phi):
-    #     function = np.array([[0, 0],
-    #                   [0, 0],
-    #                   [0, 0],
-    #                   [-np.sin(phi)/self.m, 0],
-    #                   [np.cos(phi)/self.m, 0],
-    #                   [0, (1/self.J)]])
 
 
 # noinspection PyPep8Naming
@@ -271,63 +267,99 @@ class ExtendedKalmanFilter(Estimator):
     """
     def __init__(self, is_noisy=False):
         super().__init__(is_noisy)
-        self.canvas_title = 'Extended Kalman Filter'
-        # TODO: Your implementation goes here!
-        # You may define the Q, R, and P matrices below.
+        self.canvas_title = "Extended Kalman Filter"
+        self.P = np.eye(6) * 0.1
+        self.Q = np.diag([0.001, 0.001, 0.001, 0.01, 0.01, 0.01])
+        self.R = np.diag([0.05, 0.01])
+        self.nx = 6 
 
-        #these arent used
-        self.A = np.eye(6)
-        self.B = np.eye(6)
-        self.C = np.eye(6) #dont think this is correct dim but doesnt matter 
+    def update(self, _):
+        t = len(self.x_hat) - 1
 
-        #CHANGE THESE!!!, find optimal values
-        self.Q = None
-        self.R = None
-        self.P = None
+  
+        x_prev = self.x_hat[t]
+        u_curr = self.u[t] 
+        
+      
+        f_val = self.f(x_prev, u_curr)          
+        x_pred = x_prev + f_val * self.dt      
 
-    # noinspection DuplicatedCode
-    def update(self, i):
-        if len(self.x_hat) > 0: #and self.x_hat[-1][0] < self.x[-1][0]:
-            # TODO: Your implementation goes here!
-            # You may use self.u, self.y, and self.x[0] for estimation
-            t = 0
-            self.x_hat[0][:] = self.x[0][:]
+        A_k = self.A_jacobian(x_prev, u_curr)   
+        P_pred = A_k @ self.P @ A_k.T + self.Q 
 
-            P = self.P
-            A = self.A
-            C = self.C
+        y_meas = self.y[t][:2] 
 
-            while t <= (len(self.u)-1):
-                x_hat_given = ExtendedKalmanFilter.g(self.x_hat[t][:], self.u[t][:])
-                A_next = ExtendedKalmanFilter.approx_A(self.x_hat[t][:], self.u[t][:] )
-                P_next_given = self.A * P * self.A.T + self.Q
-                C_next = ExtendedKalmanFilter.approx_C(x_hat_given, self.u[t][:] )
-                K_next = P_next_given * C_next.T * np.inv(C_next * P_next_given * C_next.T + self.R)
-                self.x_hat[t+1][:] = x_hat_given + K_next * (self.y[t+1][:] - ExtendedKalmanFilter.h(x_hat_given, t))
-                P_next = (np.eye(6) - K_next * C_next) * P_next_given
+        z_pred = self.h(x_pred)        
+        C_k = self.H_jacobian(x_pred) 
+        y_tilde = y_meas - z_pred
 
-                t = t+1
-                P = P_next
-                A = A_next
-                C = C_next
+     
+        S = C_k @ P_pred @ C_k.T + self.R  
+        K = P_pred @ C_k.T @ np.linalg.inv(S)
+        x_new = x_pred + K @ y_tilde  
 
-            return self.x_hat
+        I = np.eye(self.nx)
+        P_new = (I - K @ C_k) @ P_pred
 
-    def g(self, x, u):
-        raise NotImplementedError
+        self.x_hat.append(x_new)
+        self.P = P_new
 
-    def h(self, x, y_obs):
-        l_x = 0
-        l_y = 5
-        l_z = 5
+   
+    def f(self, x, u):
+       
+        phi = x[2]
+        x_ddot = -(u[0] * np.sin(phi)) / self.m
+        z_ddot = (u[0] * np.cos(phi)) / self.m - self.gr
+        phi_ddot = u[1] / self.J
 
-        function = np.array([np.sqrt((l_x - x[0])**2 + l_y**2 + (l_z - x[1])**2),
-                            x[2]]) #phi
+        print(x)
 
-        return function
+        return np.array([
+            x[3],
+            x[4],
+            x[5],
+            x_ddot,
+            z_ddot,
+            phi_ddot
+        ]) 
+    def A_jacobian(self, x, u):
+       
+        phi = x[2]
 
-    def approx_A(self, x, u):
-        raise NotImplementedError
-    
-    def approx_C(self, x):
-        raise NotImplementedError
+        A = np.zeros((6,6))
+        A[0,3] = 1.0
+        A[1,4] = 1.0  
+        A[2,5] = 1.0  
+
+        A[3,2] = -(u[0] / self.m)*np.cos(phi)
+
+        A[4,2] = -(u[0] / self.m)*np.sin(phi)
+
+        return A
+
+ 
+    def h(self, x):
+        phi = x[2]
+        dx = (x[0])
+        dz = (x[1] - 5)
+        rng = np.sqrt(dx*dx + dz*dz)
+        bearing = np.arctan2(dz, dx) - phi
+
+        return np.array([rng, bearing])
+
+    def H_jacobian(self, x):
+        dx = x[0] 
+        dz = x[1] - 5
+        dist_sq = dx*dx + dz*dz
+        dist = np.sqrt(dist_sq)
+
+       
+        C = np.zeros((2,6))
+
+        C[0,0] = dx / dist
+        C[0,1] = dz / dist
+        C[1,0] = - dz / dist_sq
+        C[1,1] =   dx / dist_sq
+        C[1,2] = -1.0
+
+        return C
