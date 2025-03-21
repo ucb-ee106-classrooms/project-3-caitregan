@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import sympy as sy
 plt.rcParams['font.family'] = ['Arial']
 plt.rcParams['font.size'] = 14
 
@@ -259,9 +260,13 @@ class ExtendedKalmanFilter(Estimator):
         self.canvas_title = 'Extended Kalman Filter'
         # TODO: Your implementation goes here!
         # You may define the Q, R, and P matrices below.
-        self.A = None
-        self.B = None
-        self.C = None
+
+        #these arent used
+        self.A = np.eye(6)
+        self.B = np.eye(6)
+        self.C = np.eye(6) #dont think this is correct dim but doesnt matter 
+
+        #CHANGE THESE!!!, find optimal values
         self.Q = None
         self.R = None
         self.P = None
@@ -271,13 +276,41 @@ class ExtendedKalmanFilter(Estimator):
         if len(self.x_hat) > 0: #and self.x_hat[-1][0] < self.x[-1][0]:
             # TODO: Your implementation goes here!
             # You may use self.u, self.y, and self.x[0] for estimation
-            raise NotImplementedError
+            t = 0
+            self.x_hat[0][:] = self.x[0][:]
+
+            P = self.P
+            A = self.A
+            C = self.C
+
+            while t <= (len(self.u)-1):
+                x_hat_given = ExtendedKalmanFilter.g(self.x_hat[t][:], self.u[t][:])
+                A_next = ExtendedKalmanFilter.approx_A(self.x_hat[t][:], self.u[t][:] )
+                P_next_given = self.A * P * self.A.T + self.Q
+                C_next = ExtendedKalmanFilter.approx_C(x_hat_given, self.u[t][:] )
+                K_next = P_next_given * C_next.T * np.inv(C_next * P_next_given * C_next.T + self.R)
+                self.x_hat[t+1][:] = x_hat_given + K_next * (self.y[t+1][:] - ExtendedKalmanFilter.h(x_hat_given, t))
+                P_next = (np.eye(6) - K_next * C_next) * P_next_given
+
+                t = t+1
+                P = P_next
+                A = A_next
+                C = C_next
+
+            return self.x_hat
 
     def g(self, x, u):
         raise NotImplementedError
 
     def h(self, x, y_obs):
-        raise NotImplementedError
+        l_x = 0
+        l_y = 5
+        l_z = 5
+
+        function = np.array([np.sqrt((l_x - x[0])**2 + l_y**2 + (l_z - x[1])**2),
+                            x[2]]) #phi
+
+        return function
 
     def approx_A(self, x, u):
         raise NotImplementedError

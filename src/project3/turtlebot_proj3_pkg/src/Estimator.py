@@ -319,7 +319,7 @@ class KalmanFilter(Estimator):
                 x_hat_given = self.A * self.x_hat[t][:] + KalmanFilter.unicycleModel(self.phid) * self.u[t][:]
                 P_next_given = self.A * P * self.A.T + self.Q
                 K_next = P_next_given * self.C.T * np.inv(self.C * P_next_given * self.C.T + self.R)
-                self.x_hat[t+1][:] = x_hat_given + K_next * (self.y[t][:] - self.C * x_hat_given)
+                self.x_hat[t+1][:] = x_hat_given + K_next * (self.y[t+1][:] - self.C * x_hat_given)
                 P_next = (np.eye(3) - K_next * self.C) * P_next_given
 
                 t = t+1
@@ -335,7 +335,7 @@ class KalmanFilter(Estimator):
                     [0, 1]])
         return function * self.dt
 
-
+'''
 # noinspection PyPep8Naming
 class ExtendedKalmanFilter(Estimator):
     """Extended Kalman filter estimator.
@@ -370,11 +370,64 @@ class ExtendedKalmanFilter(Estimator):
         self.landmark = (0.5, 0.5)
         # TODO: Your implementation goes here!
         # You may define the Q, R, and P matrices below.
+        self.A = None
+        self.B = None
+        self.C = None
+        self.Q = None
+        self.R = None
+        self.P = None
 
     # noinspection DuplicatedCode
     def update(self, _):
         if len(self.x_hat) > 0 and self.x_hat[-1][0] < self.x[-1][0]:
             # TODO: Your implementation goes here!
             # You may use self.u, self.y, and self.x[0] for estimation
-            raise NotImplementedError
+            t = 0
+            self.x_hat[0][:] = self.x[0][:]
 
+            P = self.P
+            A = self.A
+            C = self.C
+
+            while t <= (len(self.u)-1):
+                x_hat_given = ExtendedKalmanFilter.g(self.x_hat[t][:], self.u[t][:])
+                A_next = 
+                P_next_given = self.A * P * self.A.T + self.Q
+                C_next = 
+                K_next = P_next_given * C_next.T * np.inv(C_next * P_next_given * C_next.T + self.R)
+                self.x_hat[t+1][:] = x_hat_given + K_next * (self.y[t+1][:] - ExtendedKalmanFilter.h(x_hat_given, t))
+                P_next = (np.eye(5) - K_next * C_next) * P_next_given
+
+                t = t+1
+                P = P_next
+                A = A_next
+                C = C_next
+
+            return self.x_hat
+            
+    #we can use the nonlinear version of the unicycle model in this case
+    #CHANGE!!!
+    def unicycleModel(self, phi):
+        function = np.array([[(-self.r/(2*self.d)), (self.r/(2*self.d))],
+                [(self.r/2)*np.cos(phi), (self.r/2)*np.cos(phi)],
+                [(self.r/2)*np.sin(phi), (self.r/2)*np.sin(phi)],
+                [1, 0],
+                [0, 1]])
+        return function * self.dt
+    
+    def h(self, x, t):
+        l_x = 0
+        l_y = 5
+        l_z = 5
+
+        function = np.array([np.sqrt((l_x - x[t][2])**2 + l_y**2 + (l_z - x[t][3])**2)],
+                            [self.phi]) #phi
+
+        return function
+    
+    #linearized quadrotor dynamics 
+    def g(self, x, u):
+        function = x + f(x, u) * self.dt
+        return function
+
+'''
