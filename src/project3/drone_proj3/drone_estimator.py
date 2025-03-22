@@ -209,19 +209,14 @@ class DeadReckoning(Estimator):
         self.canvas_title = 'Dead Reckoning'
 
     def update(self, _):
-        t = len(self.x_hat) -1 
         
-
-        x_prev = self.x_hat[t]
-        curr_u = self.u[t]
-
-        x_func = self.quadModel(x_prev, curr_u)
-        next_estimate = x_prev + x_func * self.dt
+        t = len(self.x_hat) -1 
+        x_func = self.quadModel(self.x_hat[t], self.u[t])
+        next_estimate = self.x_hat[t] + x_func * self.dt
 
         self.x_hat.append(next_estimate)
 
     def quadModel(self, x, u):
-
         phi = x[2]
         x_ddot = -(u[0] * np.sin(phi)) / self.m
         z_ddot = (u[0] * np.cos(phi)) / self.m - self.gr
@@ -268,8 +263,8 @@ class ExtendedKalmanFilter(Estimator):
     def __init__(self, is_noisy=False):
         super().__init__(is_noisy)
         self.canvas_title = "Extended Kalman Filter"
-        self.P = np.eye(6) * 0.1
-        self.Q = np.diag([0.001, 0.001, 0.001, 0.01, 0.01, 0.01])
+        self.P = np.eye(6) * 0.5
+        self.Q = np.diag([0.01, 0.01, 0.01, 0.01, 0.01, 0.01])
         self.R = np.diag([0.05, 0.01])
         self.nx = 6 
 
@@ -287,11 +282,11 @@ class ExtendedKalmanFilter(Estimator):
         A_k = self.A_jacobian(x_prev, u_curr)   
         P_pred = A_k @ self.P @ A_k.T + self.Q 
 
-        y_meas = self.y[t][:2] 
+        y_measure = np.array([self.y[t][0], self.y[t][1]])
 
         z_pred = self.h(x_pred)        
         C_k = self.H_jacobian(x_pred) 
-        y_tilde = y_meas - z_pred
+        y_tilde = y_measure - z_pred
 
      
         S = C_k @ P_pred @ C_k.T + self.R  
@@ -340,7 +335,7 @@ class ExtendedKalmanFilter(Estimator):
  
     def h(self, x):
         phi = x[2]
-        dx = (x[0])
+        dx = (x[0]- 0)
         dz = (x[1] - 5)
         rng = np.sqrt(dx*dx + dz*dz)
         bearing = np.arctan2(dz, dx) - phi

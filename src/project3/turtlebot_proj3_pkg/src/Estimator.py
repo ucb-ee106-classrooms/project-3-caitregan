@@ -42,7 +42,7 @@ class Estimator:
             y[i][2] is relative bearing (rad) w.r.t. the landmark when
             freeze_bearing:=false.
         x_hat : list
-            A list of estimated system states.It should follow the same format
+            A list of estimated system states. It should follow the same format
             as x.
         dt : float
             Update frequency of the estimator.
@@ -69,7 +69,7 @@ class Estimator:
     ----------
         The frozen bearing is pi/4 and the landmark is positioned at (0.5, 0.5).
     """
-     # noinspection PyTypeChecker
+    # noinspection PyTypeChecker
     def __init__(self):
         self.d = 0.08
         self.r = 0.033
@@ -247,27 +247,29 @@ class DeadReckoning(Estimator):
         self.canvas_title = 'Dead Reckoning'
 
     def update(self, _):
-        if len(self.x_hat) > 0 and self.x_hat[-1][0] < self.x[-1][0]:
-            # TODO: Your implementation goes here!
-            # You may ONLY use self.u and self.x[0] for estimation
-            print("here")
-            t = 0
-            self.x_hat[0][:] = self.x[0][:]
-            while t < len(self.x):
-                self.x_hat[t+1][:] = self.x_hat[t][:] + DeadReckoning.unicycleModel(self, self.x_hat[t][1]) * self.u[1:2] * self.dt
-                self.x[t][:] = self.x_hat[t+1][:]
-                t = t+1
 
-            return self.x_hat
-    
-    def unicycleModel(self, phi):
-        function = np.array([[(-self.r/(2*self.d)), (self.r/(2*self.d))],
-                      [(self.r/2)*np.cos(phi), (self.r/2)*np.cos(phi)],
-                      [(self.r/2)*np.sin(phi), (self.r/2)*np.sin(phi)],
-                      [1, 0],
-                      [0, 1]])
-        return function
+        if len(self.x_hat) == 0:
+            self.x_hat.append(self.x[0])
+            return
+        
+        x_prev = self.x_hat[-1]
+        u_curr = self.u[-1]  
 
+        f_val = self.uniModel(x_prev, u_curr)
+        self.x_hat.append(x_prev + f_val * (u_curr[0] - x_prev[0]))
+
+    def uniModel(self, x, u): 
+        phi = x[1]
+        dphi = (self.r / (2 * self.d)) * (u[2] - u[1])
+        dX = (self.r / 2) * (u[1] + u[2]) * np.cos(phi)
+        dY = (self.r / 2) * (u[1] + u[2]) * np.sin(phi)
+        
+        return np.array([1.0, 
+                            dphi,
+                            dX,
+                            dY,
+                            u[1],
+                            u[2]])
 
 class KalmanFilter(Estimator):
     """Kalman filter estimator.
