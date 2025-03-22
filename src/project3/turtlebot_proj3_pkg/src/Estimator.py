@@ -2,6 +2,7 @@ import rospy
 from std_msgs.msg import Float32MultiArray
 import matplotlib.pyplot as plt
 import numpy as np
+import time
 plt.rcParams['font.family'] = ['FreeSans', 'Helvetica', 'Arial']
 plt.rcParams['font.size'] = 14
 
@@ -101,6 +102,8 @@ class Estimator:
         self.sub_x = rospy.Subscriber('x', Float32MultiArray, self.callback_x)
         self.sub_y = rospy.Subscriber('y', Float32MultiArray, self.callback_y)
         self.tmr_update = rospy.Timer(rospy.Duration(self.dt), self.update)
+        self.start_time = time.time()
+        rospy.on_shutdown(self.on_shutdown)
 
     def callback_u(self, msg):
         self.u.append(msg.data)
@@ -198,6 +201,28 @@ class Estimator:
         ylim = ax.get_ylim()
         ax.set_ylim([min(min(y) * 1.05, ylim[0]), max(max(y) * 1.05, ylim[1])])
 
+    def compute_errors(self):
+        x_arr = np.array(self.x)
+        x_hat_arr = np.array(self.x_hat)
+        n = min(len(x_arr), len(x_hat_arr))
+        x_arr = x_arr[:n]
+        x_hat_arr = x_hat_arr[:n]
+
+       
+        err_x = x_arr[:,2] - x_hat_arr[:,2]
+        err_y = x_arr[:,3] - x_hat_arr[:,3]
+        dist_errors = np.sqrt(err_x**2 + err_y**2)
+        rmse_pos = np.sqrt(np.mean(dist_errors**2))
+        print(f"[Estimator] RMSE(pos) = {rmse_pos:.4f}")
+
+    def on_shutdown(self):
+        self.compute_errors()  
+        end_time = time.time()
+        elapsed = end_time - self.start_time
+        print(f"[Estimator] Total wall-clock time = {elapsed:.3f} seconds")
+        plt.show()
+
+
 
 class OracleObserver(Estimator):
     """Oracle observer which has access to the true state.
@@ -247,7 +272,6 @@ class DeadReckoning(Estimator):
         self.canvas_title = 'Dead Reckoning'
 
     def update(self, _):
-
         if len(self.x_hat) == 0:
             self.x_hat.append(self.x[0])
             return
@@ -296,46 +320,70 @@ class KalmanFilter(Estimator):
     def __init__(self):
         super().__init__()
         self.canvas_title = 'Kalman Filter'
-        self.phid = np.pi / 4
-        # TODO: Your implementation goes here!
-        # You may define the A, C, Q, R, and P matrices below.
-        self.A = np.eye(6)
-        self.C = np.array([[1, 0, 0, 0],
-                          [0, 1, 0, 0]])
-        self.Q = np.eye(6)
-        self.R = np.eye(3)
-        self.P = np.eye(6)
 
-    # noinspection DuplicatedCode
-    # noinspection PyPep8Naming
+        self.nx = 6 
+        self.ny = 2
+        self.phi = np.pi / 4
+        self.A = np.eye(self.nx)       
+        self.B = np.zeros((self.nx, 2))
+        self.B[2, 0] = (self.r/2) * np.cos(self.phi) * self.dt  
+        self.B[2, 1] = (self.r/2) * np.cos(self.phi) * self.dt  
+        self.B[3, 0] = (self.r/2) * np.sin(self.phi) * self.dt 
+        self.B[3, 1] = (self.r/2) * np.sin(self.phi) * self.dt
+        self.B[4, 0] = self.dt
+        self.B[5, 1] = self.dt
+
+       
+        self.C = np.zeros((self.ny, self.nx))
+        self.C[0,2] = 1.0   
+        self.C[1,3] = 1.0  
+
+    
+        self.P = np.eye(self.nx) * 0.1  
+        self.Q = np.eye(self.nx) * 0.01  # 
+        self.R = np.eye(self.ny) * 0.05  
+
     def update(self, _):
-        if len(self.x_hat) > 0 and self.x_hat[-1][0] < self.x[-1][0]:
-            # TODO: Your implementation goes here!
-            # You may use self.u, self.y, and self.x[0] for estimation
-            t = 0
-            self.x_hat[0][:] = self.x[0][:]
+        # had to add this because it wouldnt stop past the 10 sec mark
+        now = rospy.Time.now().to_sec()
+        if now - self.start_time > 10.0:
+            rospy.signal_shutdown("Finished 10-second window.")
+            return
+        if len(self.x_hat) == 0:
+            init_state = self.x[0]
+            self.x_hat.append(init_state)
+            return
 
-            P = self.P
+    
+        if len(self.u) == 0 or len(self.y) == 0:
+            return
 
-            while t <= (len(self.u)-1):
-                x_hat_given = self.A * self.x_hat[t][:] + KalmanFilter.unicycleModel(self.phid) * self.u[t][:]
-                P_next_given = self.A * P * self.A.T + self.Q
-                K_next = P_next_given * self.C.T * np.inv(self.C * P_next_given * self.C.T + self.R)
-                self.x_hat[t+1][:] = x_hat_given + K_next * (self.y[t][:] - self.C * x_hat_given)
-                P_next = (np.eye(3) - K_next * self.C) * P_next_given
+    
+        x_prev = self.x_hat[-1] 
+        P_prev = self.P
+        u_curr = self.u[-1]
+        y_curr = self.y[-1]
 
-                t = t+1
-                P = P_next
+        wL = u_curr[1]
+        wR = u_curr[2]
+        u_vec = np.array([wL, wR]) 
 
-            return self.x_hat
-        
-    def unicycleModel(self, phi):
-        function = np.array([[(-self.r/(2*self.d)), (self.r/(2*self.d))],
-                    [(self.r/2)*np.cos(phi), (self.r/2)*np.cos(phi)],
-                    [(self.r/2)*np.sin(phi), (self.r/2)*np.sin(phi)],
-                    [1, 0],
-                    [0, 1]])
-        return function * self.dt
+        x_pred = self.A @ x_prev + self.B @ u_vec
+        x_pred[0] = x_prev[0] + self.dt
+        P_pred = self.A @ P_prev @ self.A.T + self.Q
+        z_meas = np.array([y_curr[1], y_curr[2]])  #
+
+        S = self.C @ P_pred @ self.C.T + self.R
+        K = P_pred @ self.C.T @ np.linalg.inv(S)
+
+      
+        y_residual = z_meas - self.C @ x_pred
+        x_new = x_pred + K @ y_residual
+
+        I = np.eye(self.nx)
+        P_new = (I - K @ self.C) @ P_pred
+        self.x_hat.append(x_new)
+        self.P = P_new
 
 
 # noinspection PyPep8Naming

@@ -2,6 +2,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import sympy as sy
 from dynamics import QuadDyn
+import rospy
+import time
 plt.rcParams['font.family'] = ['Arial']
 plt.rcParams['font.size'] = 14
 
@@ -72,6 +74,9 @@ class Estimator:
         self.ln_z, = self.axd['z'].plot([], 'o-g', linewidth=2, label='True')
         self.ln_z_hat, = self.axd['z'].plot([], 'o-c', label='Estimated')
         self.canvas_title = 'N/A'
+
+        self.start_time = time.time()
+        rospy.on_shutdown(self.on_shutdown)
 
         # Defined in dynamics.py for the dynamics model
         # m is the mass and J is the moment of inertia of the quadrotor 
@@ -169,6 +174,29 @@ class Estimator:
         ylim = ax.get_ylim()
         ax.set_ylim([min(min(y) * 1.05, ylim[0]), max(max(y) * 1.05, ylim[1])])
 
+    def compute_errors(self):
+        x_arr = np.array(self.x)
+        x_hat_arr = np.array(self.x_hat)
+        n = min(len(x_arr), len(x_hat_arr))
+        x_arr = x_arr[:n]
+        x_hat_arr = x_hat_arr[:n]
+
+       
+        err_x = x_arr[:,0] - x_hat_arr[:,0]  # x-position difference
+        err_z = x_arr[:,1] - x_hat_arr[:,1]  # z-position difference
+
+        dist_errors = np.sqrt(err_x**2 + err_z**2)
+        rmse_pos = np.sqrt(np.mean(dist_errors**2))  # Root-Mean-Square error
+        print(f"[Estimator] RMSE(pos) = {rmse_pos:.4f}")
+
+    def on_shutdown(self):
+        self.compute_errors()  
+        end_time = time.time()
+        elapsed = end_time - self.start_time
+        print(f"[Estimator] Total wall-clock time = {elapsed:.3f} seconds")
+        plt.show()
+
+
 class OracleObserver(Estimator):
     """Oracle observer which has access to the true state.
 
@@ -209,7 +237,7 @@ class DeadReckoning(Estimator):
         self.canvas_title = 'Dead Reckoning'
 
     def update(self, _):
-        
+
         t = len(self.x_hat) -1 
         x_func = self.quadModel(self.x_hat[t], self.u[t])
         next_estimate = self.x_hat[t] + x_func * self.dt
@@ -221,8 +249,6 @@ class DeadReckoning(Estimator):
         x_ddot = -(u[0] * np.sin(phi)) / self.m
         z_ddot = (u[0] * np.cos(phi)) / self.m - self.gr
         phi_ddot = u[1] / self.J
-
-        print(x)
 
         return np.array([
             x[3],
@@ -270,8 +296,6 @@ class ExtendedKalmanFilter(Estimator):
 
     def update(self, _):
         t = len(self.x_hat) - 1
-
-  
         x_prev = self.x_hat[t]
         u_curr = self.u[t] 
         
@@ -306,8 +330,6 @@ class ExtendedKalmanFilter(Estimator):
         x_ddot = -(u[0] * np.sin(phi)) / self.m
         z_ddot = (u[0] * np.cos(phi)) / self.m - self.gr
         phi_ddot = u[1] / self.J
-
-        print(x)
 
         return np.array([
             x[3],
